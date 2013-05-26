@@ -1,18 +1,17 @@
 module Sudoku where
 
-import Data.Set (Set(..), fromList, union, difference)
-import Data.List (genericIndex, genericTake)
+import Data.Set (Set(..), toList, fromList, union, difference)
 
 type Board = [[Int]]
 
 row :: Board -> (Int, Int) -> Set Int
-row board (x, y) = fromList $ genericIndex board y
+row board (x, y) = fromList $ board !! y
 
 col :: Board -> (Int, Int) -> Set Int
-col board (x, y) = fromList $ map (flip genericIndex x) board
+col board (x, y) = fromList $ map (!! x) board
 
 block :: Board -> (Int, Int) -> Set Int
-block board (x, y) = fromList . concat . map (genericTake blockSize . drop ox) $ genericTake blockSize $ drop oy board
+block board (x, y) = fromList . concat . map (take blockSize . drop ox) $ take blockSize $ drop oy board
   where blockSize = fromEnum . sqrt . toEnum $ length board
         origin n = blockSize * intFloor n blockSize
         ox = origin x
@@ -22,6 +21,13 @@ possibilities :: Board -> (Int, Int) -> Set Int
 possibilities board (x, y) = foldl difference (fromList [1..9]) sets
   where sets = mapply (board, (x, y)) [row, col, block]
 
+solve :: Board -> Board
+solve board = if newBoard == board then board else solve newBoard
+  where newBoard = [map (\x -> newVal (x, y)) [0..8] | y <- [0..8]]
+        newVal (x, y) = case (board !! y !! x, toList $ possibilities board (x, y)) of
+          (0, [val]) -> val
+          (val, _) -> val
+          
 ---------- Utility and sample data
 sample :: Board
 sample = [[0, 7, 1, 4, 0, 0, 0, 0, 5],
