@@ -45,6 +45,12 @@ findEmpties board = board { empty = fromList [(x, y) | y <- is, x <- is, blank (
         is = ixs board
 
 ---------- The solver
+main board = rec [solve [obvious, blockwise] board]
+  where solved board = 0 == (Set.size $ empty board)
+        rec boards = case find solved $ boards of
+          Just b -> b
+          Nothing -> rec $ map (solve [obvious, blockwise]) $ concatMap guess boards
+
 solve :: [(Board -> Board)] -> Board -> Board
 solve functions board = rec functions board
   where rec [] board = board -- failed :(
