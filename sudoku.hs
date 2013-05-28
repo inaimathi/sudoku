@@ -2,7 +2,7 @@ module Sudoku where
 
 import Data.Set (Set(..), toList, fromList, union, difference, intersection)
 import qualified Data.Set as Set
-import Data.List (sortBy, intercalate)
+import Data.List (sortBy, intercalate, group, sort)
 import Data.List.Split (chunksOf)
 import Data.Ord (comparing)
 import Data.Char (intToDigit)
@@ -36,11 +36,11 @@ block board (x, y) = fromList . concat . square $ values board
 blockEmpties :: Board -> (Int, Int) -> [(Int, Int)]
 blockEmpties board (x, y) = [(x', y') | x' <- xs, y' <- ys, blank (x', y')]
   where blank (x, y) = 0 == ((values board) !! y !! x)
-        xs = [ox..ox + bs]
-        ys = [oy..oy + bs]
+        xs = [ox..ox + bs-1]
+        ys = [oy..oy + bs-1]
         [ox, oy] = map origin [x, y]
         origin n = bs * intFloor n bs
-        bs = (blockSize board)-1
+        bs = blockSize board
 
 possibilities :: Board -> (Int, Int) -> Set Int
 possibilities board (x, y) = foldl difference (fromList [1..size board]) sets
@@ -60,10 +60,13 @@ obvious board = findEmpties $ board { values = newVals }
           (0, [val]) -> val
           (val, _) -> val
 
--- neededInBlock board (x, y) = difference (fromList [1..size board]) $ block board (x, y)
--- blockPos board (x, y) = map (possibilities board) $ blockEmpties board (x, y)
--- uniqueInBlock board (x, y) = foldl intersection $ block board (x, y):ps
---   where ps = map (possibilities board) $ blockEmpties board (x, y)
+blockPos board (x, y) = map (\(x, y) -> (x, y, ps (x, y))) $ blockEmpties board (x, y)
+  where ps = possibilities board
+
+uniqueInBlock board (x, y) = map head . singles $ concat ps
+  where ps = map (toList . possibilities board) $ blockEmpties board (x, y)
+        singles = filter ((==1) . length) . group . sort
+
 -- blockWise board = findEmpties $ board { values = newVals }
 --   where 
 
@@ -95,6 +98,3 @@ mapply args fns = map (\fn -> uncurry fn $ args) fns
 
 intFloor :: Int -> Int -> Int
 intFloor a b = fromEnum . floor . toEnum $ a `div` b
-
-thd :: (a, b, c) -> c
-thd (a, b, c) = c
