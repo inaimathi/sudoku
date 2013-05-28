@@ -1,12 +1,14 @@
 module Sudoku where
 
-import Data.Set (Set(..), toList, fromList, union, difference, intersection)
+import Data.Set (Set(..), toList, fromList, union, difference, intersection, member)
 import qualified Data.Set as Set
-import Data.List (sortBy, intercalate, group, sort)
+import Data.List (sortBy, intercalate, group, sort, find)
 import Data.List.Split (chunksOf)
 import Data.Ord (comparing)
 import Data.Char (intToDigit)
+import Data.Maybe (fromJust)
 
+---------- Class Definition, constructors and sample data
 data Board = Board { values :: [[Int]], 
                      empty :: Set (Int, Int),
                      size :: Int, 
@@ -21,6 +23,68 @@ instance Show Board where
           hdelim = [replicate (size board + (bs - 1)) '-']
           bs = blockSize board
 
+sample = toBoard [[0,7,1,4,0,0,0,0,5],
+                  [0,0,0,0,5,0,0,8,0],
+                  [0,0,3,9,0,7,6,0,0],
+                  [0,0,0,0,0,1,0,0,0],
+                  [0,9,0,8,0,6,0,0,3],
+                  [0,0,0,0,0,0,8,2,0],
+                  [0,6,0,0,4,0,7,0,8],
+                  [3,0,0,0,0,0,0,9,0],
+                  [0,0,0,0,8,5,0,0,0]]
+
+toBoard :: [[Int]] -> Board
+toBoard values = findEmpties $ Board { values = values, empty = fromList [],
+                                       size = len, ixs = [0..len - 1], blockSize = bs }
+  where bs = fromEnum . sqrt . toEnum $ length values
+        len = length values
+
+findEmpties :: Board -> Board
+findEmpties board = board { empty = fromList [(x, y) | y <- is, x <- is, blank (x, y)] }
+  where blank (x, y) = 0 == ((values board) !! y !! x)
+        is = ixs board
+
+---------- The solver
+solve :: [(Board -> Board)] -> Board -> Board
+solve functions board = rec functions board
+  where rec [] board = board -- failed :(
+        rec fns board = case Set.size $ empty new of
+          0 -> new -- solved :D
+          _ -> rec nextFns new
+          where new = (head fns) board
+                nextFns = if new == board then tail fns else functions
+
+---------- The solve stages
+obvious :: Board -> Board
+obvious board = findEmpties $ board { values = newVals }
+  where newVals = [[newVal (x, y) | x <- ixs board] | y <- ixs board]
+        ps x y = toList $ possibilities board (x, y)
+        newVal (x, y) = case ((values board) !! y !! x, ps x y) of
+          (0, [val]) -> val
+          (val, _) -> val
+
+blockwise :: Board -> Board
+blockwise board = findEmpties $ board { values = new }
+  where new = [[newVal (x, y) | x <- ixs board] | y <- ixs board]
+        newVal (x, y) = case find (\(x', y', v) -> (x == x') && (y == y')) uniques of
+          Just (_, _, v) -> v
+          Nothing -> (values board) !! y !! x
+        uniques = concat [uniqueInBlock board (x, y) | y <- bIxs, x <- bIxs]
+        bIxs = [0, bs..size board-1]
+        bs = blockSize board
+
+guess board = map (\v -> findEmpties $ board { values = newVals v }) vs
+  where (x, y, vs) = head $ sortBy (comparing (length . thd)) posMap
+        newVals v = [[if x == x' && y == y' then v else (values board) !! y' !! x' | x' <- ixs board] | y' <- ixs board]
+        posMap = [(x, y, toList $ possibilities board (x, y)) | (x, y) <- es]
+        es = toList $ empty board
+
+
+---------- Solver-related utility
+possibilities :: Board -> (Int, Int) -> Set Int
+possibilities board (x, y) = foldl difference (fromList [1..size board]) sets
+  where sets = mapply (board, (x, y)) [row, col, block]
+
 row :: Board -> (Int, Int) -> Set Int
 row board (x, y) = fromList $ values board !! y
 
@@ -33,6 +97,13 @@ block board (x, y) = fromList . concat . square $ values board
         origin n = bs * intFloor n bs
         bs = blockSize board
 
+uniqueInBlock board (x, y) = singles $ concatMap (toList . thd) posMap
+  where posMap = [(x', y', possibilities board (x', y')) | (x', y') <- es]
+        es = blockEmpties board (x, y)
+        singles = map (findInMap . head) . filter ((==1) . length) . group . sort
+        findInMap n = let (x, y, p) = fromJust $ find (member n . thd) posMap
+                      in (x, y, n)
+
 blockEmpties :: Board -> (Int, Int) -> [(Int, Int)]
 blockEmpties board (x, y) = [(x', y') | x' <- xs, y' <- ys, blank (x', y')]
   where blank (x, y) = 0 == ((values board) !! y !! x)
@@ -42,59 +113,12 @@ blockEmpties board (x, y) = [(x', y') | x' <- xs, y' <- ys, blank (x', y')]
         origin n = bs * intFloor n bs
         bs = blockSize board
 
-possibilities :: Board -> (Int, Int) -> Set Int
-possibilities board (x, y) = foldl difference (fromList [1..size board]) sets
-  where sets = mapply (board, (x, y)) [row, col, block]
-
-solve :: Board -> Board
-solve board = case (new == board, Set.size $ empty new) of
-  (_, 0) -> new
-  (True, _) -> new -- next stage
-  (False, _) -> solve new
-  where new = obvious board
-
-obvious board = findEmpties $ board { values = newVals }
-  where newVals = [map (\x -> newVal (x, y)) $ ixs board | y <- ixs board]
-        ps x y = toList $ possibilities board (x, y)
-        newVal (x, y) = case ((values board) !! y !! x, ps x y) of
-          (0, [val]) -> val
-          (val, _) -> val
-
-blockPos board (x, y) = map (\(x, y) -> (x, y, ps (x, y))) $ blockEmpties board (x, y)
-  where ps = possibilities board
-
-uniqueInBlock board (x, y) = map head . singles $ concat ps
-  where ps = map (toList . possibilities board) $ blockEmpties board (x, y)
-        singles = filter ((==1) . length) . group . sort
-
--- blockWise board = findEmpties $ board { values = newVals }
---   where 
-
----------- Data-related
-toBoard :: [[Int]] -> Board
-toBoard values = findEmpties $ Board { values = values, empty = fromList [],
-                                       size = len, ixs = [0..len - 1], blockSize = bs }
-  where bs = fromEnum . sqrt . toEnum $ length values
-        len = length values
-
-findEmpties :: Board -> Board
-findEmpties board = board { empty = fromList [(x, y) | y <- is, x <- is, blank (x, y)] }
-  where blank (x, y) = 0 == ((values board) !! y !! x)
-        is = ixs board
-
-sample = toBoard [[0,7,1,4,0,0,0,0,5],
-                  [0,0,0,0,5,0,0,8,0],
-                  [0,0,3,9,0,7,6,0,0],
-                  [0,0,0,0,0,1,0,0,0],
-                  [0,9,0,8,0,6,0,0,3],
-                  [0,0,0,0,0,0,8,2,0],
-                  [0,6,0,0,4,0,7,0,8],
-                  [3,0,0,0,0,0,0,9,0],
-                  [0,0,0,0,8,5,0,0,0]]
-
----------- Utility
+---------- General Utility
 mapply :: (a, b) -> [(a -> b -> c)] -> [c]
 mapply args fns = map (\fn -> uncurry fn $ args) fns
 
 intFloor :: Int -> Int -> Int
 intFloor a b = fromEnum . floor . toEnum $ a `div` b
+
+thd :: (a, b, c) -> c
+thd (a, b, c) = c
