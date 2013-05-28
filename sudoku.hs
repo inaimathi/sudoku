@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module Sudoku where
 
 import Data.Set (Set(..), toList, fromList, difference, member)
@@ -23,6 +24,11 @@ instance Show Board where
           hdelim = [replicate (size board + (bs - 1)) '-']
           bs = blockSize board
 
+sampleSmall = toBoard [[1, 0, 3, 0],
+                       [0, 4, 0, 2],
+                       [0, 3, 4 ,0],
+                       [4, 0, 2, 3]]
+
 sample = toBoard [[0,7,1,4,0,0,0,0,5],
                   [0,0,0,0,5,0,0,8,0],
                   [0,0,3,9,0,7,6,0,0],
@@ -32,6 +38,26 @@ sample = toBoard [[0,7,1,4,0,0,0,0,5],
                   [0,6,0,0,4,0,7,0,8],
                   [3,0,0,0,0,0,0,9,0],
                   [0,0,0,0,8,5,0,0,0]]
+         
+sampleHard = toBoard [[0,7,1,4,0,0,0,0,5],
+                      [0,0,0,0,5,0,0,8,0],
+                      [0,0,3,9,0,7,6,0,0],
+                      [0,0,0,0,0,1,0,0,0],
+                      [0,9,0,0,0,6,0,0,3],
+                      [0,0,0,0,0,0,8,2,0],
+                      [0,0,0,0,4,0,0,0,8],
+                      [3,0,0,0,0,0,0,9,0],
+                      [0,0,0,0,8,5,0,0,0]]
+
+sampleDevilish = toBoard [[0,7,1,4,0,0,0,0,0],
+                          [0,0,0,0,5,0,0,0,0],
+                          [0,0,3,9,0,7,6,0,0],
+                          [0,0,0,0,0,0,0,0,0],
+                          [0,9,0,0,0,6,0,0,3],
+                          [0,0,0,0,0,0,0,0,0],
+                          [0,0,0,0,4,0,0,0,8],
+                          [0,0,0,0,0,0,0,9,0],
+                          [0,0,0,0,8,5,0,0,0]]
 
 toBoard :: [[Int]] -> Board
 toBoard values = findEmpties $ Board { values = values, empty = fromList [],
@@ -45,21 +71,24 @@ findEmpties board = board { empty = fromList [(x, y) | y <- is, x <- is, blank (
         is = ixs board
 
 ---------- The solver
-main board = rec [solve [obvious, blockwise] board]
+solve :: Board -> Board
+solve board = rec [naiveSolve [obvious, blockwise] board]
   where solved board = 0 == (Set.size $ empty board)
-        rec boards = case find solved $ boards of
+        impossible board = any ((==0) . length) . map (toList . possibilities board) . toList $ empty board
+        rec [] = board -- Failed
+        rec !boards = case find solved $ boards of
           Just b -> b
-          Nothing -> rec $ map (solve [obvious, blockwise]) $ concatMap guess boards
+          Nothing -> rec . map (naiveSolve [obvious, blockwise]) . concatMap guess $ filter (not . impossible) boards
 
-solve :: [(Board -> Board)] -> Board -> Board
-solve functions board = rec functions board
-  where rec [] board = board -- failed :(
+naiveSolve :: [(Board -> Board)] -> Board -> Board
+naiveSolve functions board = rec functions board
+  where rec [] board = board
         rec fns board = case Set.size $ empty new of
-          0 -> new -- solved :D
+          0 -> new
           _ -> rec nextFns new
-          where new = (head fns) board
+          where new = (head fns) $ board
                 nextFns = if new == board then tail fns else functions
-
+        
 ---------- The solve stages
 obvious :: Board -> Board
 obvious board = findEmpties $ board { values = newVals }
