@@ -1,8 +1,8 @@
 module Sudoku where
 
-import Data.Set (Set(..), toList, fromList, union, difference, intersection, member)
+import Data.Set (Set(..), toList, fromList, difference, member)
 import qualified Data.Set as Set
-import Data.List (sortBy, intercalate, group, sort, find)
+import Data.List (sort, sortBy, intercalate, group, find)
 import Data.List.Split (chunksOf)
 import Data.Ord (comparing)
 import Data.Char (intToDigit)
